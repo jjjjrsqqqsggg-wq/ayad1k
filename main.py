@@ -3,6 +3,7 @@ import telebot
 from telebot import types
 import threading
 import sqlite3
+import time
 
 # 🔑 التوكن الخاص ببوتك الرئيسي (المصنع)
 MAIN_TOKEN = "8861113947:AAFSV2dfGPagCB_IuRQbfGtAJ5HRd28tP2w"
@@ -13,7 +14,7 @@ CHANNEL_USERNAME = "@DR1Ax"
 CHANNEL_LINK = "https://t.me/DR1Ax"
 DEVELOPER_USERNAME = "@DR1Ax"
 
-# ⚠️ تم وضع الآيدي الحقيقي الخاص بك هنا
+# ⚠️ الآيدي الخاص بك
 ADMIN_ID = 6148614666
 
 user_states = {}
@@ -191,19 +192,32 @@ def run_user_bot(user_token, owner_id):
                         f"الحالة 🤍: {'متوقف مؤقتاً' if bot_settings['is_paused'] else 'يعمل بشكل طبيعي'}"
                     )
                     user_bot.send_message(owner_id, info_text)
-                # (يمكنك استكمال باقي أزرار لوحة التحكم الخاصة بك هنا)
-            
-        # تشغيل البوت الفرعي مع تفعيل skip_pending لتفادي أي خطأ تعارض 409
+            else:
+                if bot_settings["is_paused"]:
+                    return
+                if user_id in blocked_users:
+                    return
+                stats['messages_count'] += 1
+                # توجيه الرسالة لمالك البوت الفرعي
+                markup = types.InlineKeyboardMarkup()
+                markup.add(
+                    types.InlineKeyboardButton("رد 🤍", callback_data=f"reply_{user_id}"),
+                    types.InlineKeyboardButton("حظر 🤍", callback_data=f"block_{user_id}")
+                )
+                user_bot.forward_message(owner_id, user_id, msg.message_id)
+                user_bot.send_message(owner_id, f"رسالة جديدة من المستخدم: `{user_id}` 🤍", parse_mode="Markdown", reply_markup=markup)
+
+        # تشغيل البوت الفرعي مع skip_pending لمنع أي تعارض 409
         user_bot.infinity_polling(skip_pending=True)
         
     except Exception as e:
         print(f"خطأ في تشغيل البوت الفرعي {user_token}: {e}")
 
-# تهيئة قاعدة البيانات وتشغيل البوت الرئيسي والبوتات المحفوظة
+# --- التشغيل الأساسي على Render بدون أي تعارض ---
 if __name__ == "__main__":
     init_db()
     
-    # تشغيل البوتات المخزنة مسبقاً في قاعدة البيانات
+    # تشغيل البوتات المخزنة مسبقاً في قاعدة البيانات عبر الـ Threads
     saved_bots = load_all_bots()
     for owner_id, token, _ in saved_bots:
         t = threading.Thread(target=run_user_bot, args=(token, owner_id))
@@ -211,4 +225,7 @@ if __name__ == "__main__":
         t.start()
         
     print("Bot Factory is running successfully... 🚀")
-    main_bot.infinity_polling(skip_pending=True)
+    
+    # حلقة تمديد وتشغيل السيرفر على Render لمنع الخمول وبدون تداخل للـ Polling
+    while True:
+        time.sleep(60)
